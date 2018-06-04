@@ -1,0 +1,181 @@
+Actividades Prueba Mediastream Alexander Torrealba
+
+MONTAR RAID0
+
+La primera actividad la pude haber realizado de la siguiente forma:
+
+Se ubican los discos detectados por el SO
+fdisk -l o lsblk
+
+Activamos el módulo raid0
+modprobe raid0
+
+Validamos que no este ningún dipositivo en raid
+cat /proc/mdstat
+
+Creamos el md en donde va a estar el Raid0
+mknod /dev/md0 b 9 0
+
+Creamos el raid0 con los dispositivos xvdb y xvdc
+mdadm --create /dev/md0 --level=raid0 --raid-devices=2 /dev/xvdb /dev/xvdc
+
+Observamos que este definido
+cat /proc/mdstat
+
+le damos el formato solicitado 
+mkfs.ext4 /dev/md0
+
+respaldamos /etc/fstab
+
+se modifica colocando la siguiente línea (con el identificador del dispositivo)
+UUID=de9a1ccd-a2dd-44f1-8be8-0123456abcdef       /mediastream   ext4    defaults,nofail        0       2
+
+ejecutamos mount -a para validar si existe algún error
+
+Por ultimo montamos el dispositivo 
+mount /mediastream
+
+
+NGINX
+
+Se inatala Ngix
+aptitude install nginx
+
+Se crean los site1 y site2
+cp default site1.com.conf
+cp default site2.com.conf
+
+Se adapta la configuración y con las restricciones solicitadas
+como por ejemplo site 2
+
+	location / {
+		allow	127.0.0.1;
+		deny	all;
+	}
+
+Se coloca esta restricción de acceso en el VirtualHost ya que la misma debe afectar a este sitio nada más, si se colocara en el iptable se afecta todas las solicitudes que pueda responder el servicio (nginx)
+
+Se crean los directorios en donde se van a ubicar los dos sitios.
+mkdir www
+mkdir www/site1.com
+mkdir www/site1.com/html
+
+o
+mkdir -p www/site2.com/html
+
+Se colocan los permisos pertinentes
+chmod -R 755 www
+chown www-dat:www-data -R site*
+
+y se crean los archivos index
+vim index.html 
+
+Se crean los enlaces simbolicos en /etc/nginx/site-enabled de los archivos de configuración en
+/etc/nginx/site-available
+
+Se valida que no tenga errores con
+nginx -t
+
+Se reinicia Nginx
+/etc/init.d/nginx restart
+
+Se valida que el servicio este escuchano por el puerto 
+netstat -tupan
+
+Se modifica el archivo /etc/hosts
+Para que pueda resolver el nombre interno.mediastre.am
+
+Se realizan las pruebas desde el browser para el sitio1 y por consola para el sitio 2
+wget interno.mediastre.am
+
+
+
+
+PROFTPD
+​
+Se realizó la instalación del servidor de ftp
+aptitude install proftpd
+
+Se realizaron las modificaciones en la configuración
+vim /etc/proftpd/proftpd.conf
+
+Se creó el Usuario
+adduser mediastream
+
+Se reinició el demonio
+/etc/init.d/proftpd restart
+   
+Se generó un key para este usuario
+ssh-keygen -t rsa
+
+y se colocó la llave pública en el archivo autorized
+cat id_rsa.pub > authorized_keys
+
+
+SCRIPT DE MONITOREO
+
+Se colocó en el crontab la siguiente entrada para la ejecución del script en el intervalo especificado
+*/5 * * * * /home/ubuntu/Script/monitor.sh >> /home/ubuntu/Script/moni.log
+
+Un sencillo bash en donde se hacen algunas tareas
+
+#!/bin/bash
+echo "------------------------------------------------" >> /home/ubuntu/Script/mediastream/recolecta_info.log
+date >> /home/ubuntu/Script/mediastream/recolecta_info.log
+echo "------------------------------------------------" >> /home/ubuntu/Script/mediastream/recolecta_info.log
+tail -3 /var/log/syslog >> /home/ubuntu/Script/mediastream/recolecta_info.log
+df -h >> /home/ubuntu/Script/mediastream/recolecta_info.log
+sha256sum /var/log/auth.log >> /home/ubuntu/Script/mediastream/recolecta_info.log
+
+
+MONGODB
+
+Para la instalación de MongoDB se realizaron los siguientes pasos:
+
+Se agrega la llave del repositorio:
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv EA312927
+
+Se colocó el repositorio en el source:
+echo "deb http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.2 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-3.2.list
+
+Aquí cometí un error, cuando copié la instrucción y no me percate de la versión de Ubuntu, y perdí mucho tiempo.
+
+La versión correcta es trusty
+
+Se realiza una actualización de la lista de paquetes
+apt-get update
+
+Se instala la versión solicitada
+apt-get install -y mongodb-org
+
+Se inicia MongoDB
+service mongod start
+
+Como no se solicita configuraciones de seguridad a base de datos se deja configurada para que responda local y sin contraseñas.
+
+Se inicia la consola
+mongo 
+
+Se crea una base de datos
+use mondodb
+switched to mongodb
+
+Se insertan algunos datos de pruebas
+db.testCOL.insert([
+    {'name': 'Alicia', 'edad': 30},
+    {'name': 'Pepe',   'edad': 25},
+    {'name': 'Carlos', 'edad': 35}
+]);
+
+Posterior a esto, se crea una tarea en donde se hace un backup
+
+crontab
+20 5 * * * /usr/bin/mongodump -d mongodb -o /home/ubuntu/Script/mediastream/dump_`date +'%H:%M:%S-%Y-%m-%d'` >> /var/log/mongo_backup.log
+
+En donde se usa el comando mongodum, se le dice la Base de datos y la salida en donde la debe colocar
+
+
+
+
+
+
